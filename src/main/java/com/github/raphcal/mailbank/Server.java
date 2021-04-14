@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author Raphaël Calabro (ddaeke-github at yahoo.fr)
  */
+@Slf4j
 class Server implements Runnable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Server.class);
@@ -144,16 +146,17 @@ class Server implements Runnable {
     private void writeData(final SelectionKey key) throws IOException {
         final Attachment attachment = (Attachment) key.attachment();
         final MailBuilder mailBuilder = attachment.getMailBuilder();
-        try (final SocketChannel channel = (SocketChannel) key.channel()) {
-            final ByteBuffer buffer = ByteBuffer.wrap(mailBuilder.getResponse().getBytes(StandardCharsets.US_ASCII));
-            while (buffer.hasRemaining()) {
-                channel.write(buffer);
-            }
+        final SocketChannel channel = (SocketChannel) key.channel();
+        final String response = mailBuilder.getResponse();
+        log.trace("> " + response);
+        final ByteBuffer buffer = ByteBuffer.wrap(response.getBytes(StandardCharsets.US_ASCII));
+        while (buffer.hasRemaining()) {
+            channel.write(buffer);
         }
 
         if (mailBuilder.isDone()) {
+            channel.close();
             key.cancel();
-            key.channel().close();
             handler.mailReceived(mailBuilder.build());
         } else {
             key.interestOps(SelectionKey.OP_READ);

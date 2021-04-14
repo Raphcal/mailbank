@@ -12,11 +12,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  *
  * @author Raphaël Calabro (ddaeke-github at yahoo.fr)
  */
+@Slf4j
 public class MailBuilder {
     private static final String LINE_ENDING = "\r\n";
 
@@ -38,10 +40,18 @@ public class MailBuilder {
     public void feedBytes(ByteBuffer buffer) throws IOException {
         String line = readLine(buffer);
         while (line != null) {
+            log.trace("< " + line);
             if (status != Status.BODY) {
-                final String[] args = line.split(" ");
+                final String[] args = line.split("[ :]");
 
                 final Command command = Command.valueOf(args[0].toUpperCase());
+
+                if (command == Command.QUIT) {
+                    response = "221 Closing connection" + LINE_ENDING;
+                    status = Status.DONE;
+                    return;
+                }
+
                 if (!status.getExpected().contains(command)) {
                     throw new IllegalArgumentException(status + ", expected one of " + status.getExpected() + ", but received: " + command);
                 }
@@ -49,7 +59,9 @@ public class MailBuilder {
                 switch (status) {
                     case INITIAL:
                         client = args[1];
-                        response = "250-" + hostName + " Hello " + client + LINE_ENDING;
+                        response = "250-" + hostName + " Hello " + client + LINE_ENDING
+                                + "250 AUTH PLAIN" + LINE_ENDING;
+                        
                         status = Status.ENVELOPE;
                         break;
                     case REQUIRE_AUTH:
@@ -60,29 +72,27 @@ public class MailBuilder {
                                 from = Arrays.stream(args)
                                         .skip(2)
                                         .collect(Collectors.joining(" "));
+                                response = "250 Sender OK" + LINE_ENDING;
                                 break;
                             case RCPT:
                                 to.add(Arrays.stream(args)
                                         .skip(2)
                                         .collect(Collectors.joining(" ")));
+                                response = "250 Recipient OK" + LINE_ENDING;
                                 break;
                             case DATA:
                                 status = Status.BODY;
+                                response = "354 Enter mail, end with '.' on a line by itself" + LINE_ENDING;
                                 break;
                             default:
                                 throw new IllegalArgumentException("Bad command: " + line);
                         }
                         break;
-                    case WAITING_FOR_QUIT:
-                        response = "221 Closing connection";
-                        break;
                 }
-
-                status = Status.values()[status.ordinal() + 1];
             } else {
                 if (".".equals(line)) {
-                    status = Status.WAITING_FOR_QUIT;
-                    response = "250 OK";
+                    status = Status.DONE;
+                    response = "250 Data OK";
                 } else {
                     dataBuilder.write(line.getBytes(StandardCharsets.US_ASCII));
                     dataBuilder.write('\r');
@@ -137,7 +147,9 @@ public class MailBuilder {
         private final Set<Command> expected;
 
         private Status(Command... expected) {
-            this.expected = EnumSet.copyOf(Arrays.asList(expected));
+            this.expected = expected.length > 0
+                    ? EnumSet.copyOf(Arrays.asList(expected))
+                    : EnumSet.noneOf(Command.class);
         }
     }
 
