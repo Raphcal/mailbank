@@ -14,8 +14,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -82,7 +80,10 @@ public class MailBuilder {
                 }
 
                 if (!status.getExpected().contains(command)) {
-                    throw new IllegalArgumentException(status + ", expected one of " + status.getExpected() + ", but received: " + command);
+                    response = "500-" + status + ", expected one of " + status.getExpected() + ", but received: " + command + LINE_ENDING
+                            + "221 Closing connection" + LINE_ENDING;
+                    status = Status.DONE;
+                    return;
                 }
 
                 switch (status) {
@@ -90,7 +91,6 @@ public class MailBuilder {
                         client = args[1];
                         response = "250-" + hostName + " Hello " + client + LINE_ENDING
                                 + "250 AUTH PLAIN" + LINE_ENDING;
-                        
                         status = Status.ENVELOPE;
                         break;
                     case REQUIRE_AUTH:
